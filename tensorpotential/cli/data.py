@@ -614,6 +614,16 @@ def compute_fm_energy_shift_auto(
     from tensorpotential.tensorpot import TensorPotential
     from tensorpotential.instructions.base import load_instructions
 
+    def _compute_device():
+        gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            log.info(
+                "FM shift auto: TensorFlow GPU device detected, using /GPU:0 for FM predictions"
+            )
+            return "/GPU:0"
+        log.info("FM shift auto: no TensorFlow GPU device detected, using CPU")
+        return "/CPU:0"
+
     log.info(f"FM shift auto: selecting up to {max_structures} representative structures")
     selected_atoms, selected_idx = select_representative_structures(
         train_df, max_structures=max_structures, seed=seed
@@ -624,7 +634,7 @@ def compute_fm_energy_shift_auto(
     ckpt_prefix = os.path.join(checkpoint_folder, "checkpoint")
     log.info(f"FM shift auto: loading FM from {model_path}")
 
-    with tf.device("/cpu:0"):
+    with tf.device(_compute_device()):
         instructions = load_instructions(model_path)
         tp = TensorPotential(potential=instructions)
         tp.load_checkpoint(checkpoint_name=ckpt_prefix, expect_partial=True, verbose=False)

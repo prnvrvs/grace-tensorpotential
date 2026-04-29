@@ -45,6 +45,7 @@ plugins:
 nav:
   - Start: index.md
   - Installation: gracemaker/install.md
+  - Installation macOS: gracemaker/install_macos.md
   - Quick start: gracemaker/quickstart.md
   - Presets: gracemaker/presets.md
   - Input file: gracemaker/inputfile.md

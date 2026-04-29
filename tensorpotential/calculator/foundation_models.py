@@ -373,13 +373,26 @@ def grace_fm(
     **kwargs,
 ):
     from tensorpotential.calculator.asecalculator import TPCalculator
+    from tensorpotential import TensorPotential
+    from tensorpotential.instructions.base import load_instructions
 
     assert model in MODELS_NAME_LIST, f"model must be in {MODELS_NAME_LIST}"
 
-    model_path = get_or_download_model(model)
+    checkpoint_path = get_or_download_checkpoint(model)
+    model_path = os.path.join(checkpoint_path, "model.yaml")
+    checkpoint_prefix = os.path.join(checkpoint_path, "checkpoint")
+
+    instructions = load_instructions(model_path)
+    tp = TensorPotential(potential=instructions)
+    tp.model.decorate_compute_function(tp.float_dtype, jit_compile=False)
+    tp.load_checkpoint(
+        checkpoint_name=checkpoint_prefix,
+        expect_partial=True,
+        verbose=False,
+    )
 
     calc = TPCalculator(
-        model=model_path,
+        model=tp.model,
         pad_neighbors_fraction=pad_neighbors_fraction,
         pad_atoms_number=pad_atoms_number,
         max_number_reduction_recompilation=max_number_reduction_recompilation,
