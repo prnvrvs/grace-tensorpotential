@@ -375,7 +375,6 @@ def grace_fm(
     from tensorpotential.calculator.asecalculator import TPCalculator
     from tensorpotential import TensorPotential
     from tensorpotential.instructions.base import load_instructions
-
     assert model in MODELS_NAME_LIST, f"model must be in {MODELS_NAME_LIST}"
 
     checkpoint_path = get_or_download_checkpoint(model)
@@ -384,12 +383,13 @@ def grace_fm(
 
     instructions = load_instructions(model_path)
     tp = TensorPotential(potential=instructions)
-    tp.model.decorate_compute_function(tp.float_dtype, jit_compile=False)
     tp.load_checkpoint(
         checkpoint_name=checkpoint_prefix,
         expect_partial=True,
         verbose=False,
     )
+    tp.model.freeze_variables_for_inference()
+    tp.model.decorate_compute_function(tp.float_dtype, jit_compile=False)
 
     calc = TPCalculator(
         model=tp.model,

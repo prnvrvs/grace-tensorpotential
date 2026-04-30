@@ -388,6 +388,7 @@ class BondSpecificRadialBasisFunction(TPInstruction, ElementsReduceInstructionMi
                 bond_ind_cut[i1, i0] = cut
 
         self.bond_cutoff_map = bond_ind_cut.flatten().reshape(-1, 1).astype(np.float64)
+        self.bond_cutoff_map_np = self.bond_cutoff_map.copy()
         self.nfunc = nfunc
 
         self.basis_type = basis_type
@@ -399,10 +400,11 @@ class BondSpecificRadialBasisFunction(TPInstruction, ElementsReduceInstructionMi
 
     def build(self, float_dtype):
         if not self.is_built:
-            self.bond_cutoff_map = tf.Variable(
+            # Keep the per-bond cutoff table immutable. Using a Variable here
+            # triggers ResourceGather placement on Metal, which is unsupported.
+            self.bond_cutoff_map = tf.constant(
                 self.bond_cutoff_map,
                 dtype=float_dtype,
-                trainable=False,
                 name="RBF_cutoff",
             )
             if self.basis_type == "Gaussian":
@@ -447,8 +449,10 @@ class BondSpecificRadialBasisFunction(TPInstruction, ElementsReduceInstructionMi
         mu_i = input_data[constants.BOND_MU_I]
         mu_j = input_data[constants.BOND_MU_J]
         mu_ij = mu_j + mu_i * tf.constant(self.nelem, dtype=mu_i.dtype)
-        cutoff = tf.gather(self.bond_cutoff_map, mu_ij)
-        cutoff = tf.cast(cutoff, dtype=d.dtype)
+        cutoff = tf.cast(
+            tf.squeeze(tf.gather(self.bond_cutoff_map, mu_ij), axis=-1), dtype=d.dtype
+        )
+        cutoff = cutoff[:, tf.newaxis]
         if self.basis_type == "Cheb":
             basis = compute_cheb_radial_basis(
                 d, self.nfunc, cutoff, self.cutoff_function_param
@@ -1796,10 +1800,10 @@ class FunctionReduce(TPEquivariantInstruction, ElementsReduceInstructionMixin):
                 axis=2,
             )
             if self.is_central_atom_type_dependent:
-                w = getattr(self, f"reducing_{instr.name}")
+                w = tf.convert_to_tensor(getattr(self, f"reducing_{instr.name}"))
                 eq = "aknw,anw->wak"
             else:
-                w = getattr(self, f"reducing_{instr.name}")
+                w = tf.convert_to_tensor(getattr(self, f"reducing_{instr.name}"))
                 eq = "knw,anw->wak"
             w = tf.gather(w, instruction_collection["w_l_tile"], axis=-1)
             # For performance
@@ -2117,7 +2121,7 @@ class FunctionReduceN(
                     ],
                     dtype=self.float_dtype,
                 )
-            w = getattr(self, f"reducing_{instr.name}")
+            w = tf.convert_to_tensor(getattr(self, f"reducing_{instr.name}"))
             # lora
             if self.lora:
                 lora_tensors = getattr(self, f"reducing_{instr.name}_lora_tensors")
@@ -2587,7 +2591,7 @@ class FCRight2Left(
             else input_data[constants.ATOMIC_MU_I]
         )
         if self.left_coefs:
-            w_left = self.w_left
+            w_left = tf.convert_to_tensor(self.w_left)
             # LORA
             if self.lora:
                 w_left = w_left + lora_reconstruction(
@@ -2608,7 +2612,7 @@ class FCRight2Left(
             left = tf.transpose(left, [2, 0, 1])
 
         right = tf.gather(input_data[self.right.name], self.collect_from, axis=-1)
-        w_right = self.w_right
+        w_right = tf.convert_to_tensor(self.w_right)
         # LORA
         if self.lora:
             w_right = w_right + lora_reconstruction(
@@ -2882,7 +2886,7 @@ class FunctionReduceParticular(
                 axis=2,
             )
             w = tf.gather(
-                getattr(self, f"reducing_{instr.name}"),
+                tf.convert_to_tensor(getattr(self, f"reducing_{instr.name}")),
                 instruction_collection["w_l_tile"],
                 axis=-1,
             )
@@ -2974,6 +2978,7 @@ class ZBLPotential(TPInstruction, ElementsReduceInstructionMixin):
             self.bond_zbl_cutoff_map = (
                 bond_ind_cut.flatten().reshape(-1, 1).astype(np.float64)
             )
+            self.bond_zbl_cutoff_map_np = self.bond_zbl_cutoff_map.copy()
         else:
             raise ValueError(f"Unsupported cutoff type {type(cutoff)}")
 
@@ -3069,7 +3074,10 @@ class ZBLPotential(TPInstruction, ElementsReduceInstructionMixin):
         mu_j = input_data[constants.BOND_MU_J]
         if self.bond_zbl_cutoff:
             mu_ij = mu_j + mu_i * tf.constant(self.nelem, dtype=mu_i.dtype)
-            cutoff = tf.gather(self.bond_zbl_cutoff_map, mu_ij)
+            cutoff = tf.cast(
+                tf.squeeze(tf.gather(self.bond_zbl_cutoff_map, mu_ij), axis=-1),
+                dtype=d.dtype,
+            )
         else:
             cutoff = self.cutoff
 

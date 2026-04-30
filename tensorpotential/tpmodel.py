@@ -629,6 +629,46 @@ class TPModel(tf.Module):
         self._aux_compute_sigs = {}
         self._aux_tf_funcs = {}
 
+    def freeze_variables_for_inference(self):
+        """
+        Replace variables inside the instruction graph with tensors.
+
+        This is intended for inference-only paths such as ASE calculators.
+        It removes resource-backed variable reads from the hot path and lets
+        TensorFlow place the remaining math more efficiently on GPU backends.
+        """
+
+        visited: set[int] = set()
+
+        def freeze_value(value):
+            if isinstance(value, tf.Variable):
+                return tf.convert_to_tensor(value)
+            if isinstance(value, tf.Module):
+                freeze_module(value)
+                return value
+            if isinstance(value, dict):
+                for key, item in list(value.items()):
+                    value[key] = freeze_value(item)
+                return value
+            if isinstance(value, list):
+                return [freeze_value(item) for item in value]
+            if isinstance(value, tuple):
+                return tuple(freeze_value(item) for item in value)
+            return value
+
+        def freeze_module(module):
+            module_id = id(module)
+            if module_id in visited:
+                return
+            visited.add(module_id)
+
+            for attr_name, attr_value in list(vars(module).items()):
+                frozen_value = freeze_value(attr_value)
+                if frozen_value is not attr_value:
+                    setattr(module, attr_name, frozen_value)
+
+        freeze_module(self)
+
     def _decorate_aux_computes(self, float_dtype, jit_compile=True, input_dtype=None):
         if input_dtype is None:
             input_dtype = float_dtype

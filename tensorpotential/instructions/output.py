@@ -747,7 +747,7 @@ class TrainableShiftTarget(TPOutputInstruction, ElementsReduceInstructionMixin):
         r_map = tf.reshape(
             tf.range(n_at_b_total, delta=1, dtype=tf.int32, name="r_map"), [-1, 1]
         )
-        real_shift = tf.gather(self.at_shifts, at_mu_i, axis=0)
+        real_shift = tf.gather(tf.convert_to_tensor(self.at_shifts), at_mu_i, axis=0)
         real_shift = tf.where(r_map < n_at_b_real, real_shift, tf.zeros_like(target))
         return target + real_shift
 
